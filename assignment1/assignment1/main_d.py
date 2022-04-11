@@ -1,6 +1,6 @@
 import numpy as np
-# import open3d as o3d
-# import os
+import open3d as o3d
+import os
 import matplotlib.pyplot as plt
 
 # globals.
@@ -25,7 +25,7 @@ def open3d(path, vis=False):
     # convert into ndarray
     pcd_arr = np.asarray(pcd.points)
 
-    # ***  you need to clean the point cloud using a threshold ***
+    # clean the point cloud using a threshold
     distances = np.sqrt(np.sum(pcd_arr ** 2, axis = 1))
     pcd_arr_cleaned = pcd_arr[distances < 2]
 
@@ -36,14 +36,14 @@ def open3d(path, vis=False):
 
 
 def open_wave_data():
-    target = np.load(os.path.join(DATA_DIR, 'wave_target.npy'))
-    source = np.load(os.path.join(DATA_DIR, 'wave_source.npy'))
+    target = np.load(os.path.join(DATA_DIR, 'wave_target.npy')).T
+    source = np.load(os.path.join(DATA_DIR, 'wave_source.npy')).T
     return source, target
 
 
 def open_bunny_data():
-    target = np.load(os.path.join(DATA_DIR, 'bunny_target.npy'))
-    source = np.load(os.path.join(DATA_DIR, 'bunny_source.npy'))
+    target = np.load(os.path.join(DATA_DIR, 'bunny_target.npy')).T
+    source = np.load(os.path.join(DATA_DIR, 'bunny_source.npy')).T
     return source, target
 
 
@@ -51,6 +51,9 @@ def open_bunny_data():
 #     ICP                  #
 ############################
 def min_dist(source, dest):
+    """
+    Get point with minimal distance to source point for each point in source.
+    """
     idx = []
 
     for sample in source:
@@ -60,42 +63,66 @@ def min_dist(source, dest):
     result = dest[idx]
     return result
 
-# pcd_arr_cleaned = open3d("Data/data/0000000000.pcd", True)
-# A1 = pcd_arr_cleaned @ R + t
+
+def calc_R_t(source_trans, target):
+    """
+    compute R and t for a given translated source and target point cloud.
+    """
+    # compute closest points from A2 to A1
+    target_BF = min_dist(source_trans, target)
+
+    # SVD: mean and centereing
+    source_trans_mean = np.mean(source_trans, axis=0)
+    target_mean = np.mean(target_BF, axis=0)
+    centered_source_trans = source_trans - source_trans_mean
+    centered_target = target_BF - target_mean
+
+    # SVD: covariance matrix
+    W = np.eye(len(source_trans))
+    cov = centered_source_trans.T @ W @ centered_target
+
+    # SVD: computing svd, R and t
+    u, s, vh = np.linalg.svd(cov)
+
+    mid = np.eye(3)
+    mid[-1][-1] = np.linalg.det(vh.T @ u.T)
+
+    R = vh.T @ mid @ u
+    t = target_mean - R @ source_trans_mean
+
+    return R, t
 
 
-# initialize R and t
-R = np.eye(3)
-t = np.zeros((3,1))
+def ICP(source, target, th=0.9):
+    """
+    Perform ICP algorithm and return rotation matrix and translation vector.
+    """
+    # initialize R and t
+    R = np.eye(3)
+    t = np.zeros((3))
 
-# compute translation
-np.random.seed(42)
-A1 = np.random.rand(4,3)
-A2 = np.random.rand(4,3)
+    rms = np.inf
+    source_trans = source @ R + t
 
-# compute closest points from A2 to A1
-di = min_dist(A1, A2)
+    while rms > th:
+        R, t = calc_R_t(source_trans, target)
 
-# SVD: mean and centereing
-A1_mean = np.mean(A1, axis=0)
-A2_mean = np.mean(di, axis=0)
-centered_A1 = A1 - A1_mean
-centered_A2 = di - A2_mean
+        source_trans = source @ R + t
+        rms = np.sqrt(np.mean(np.linalg.norm(source - source_trans, axis=1)))
+        print(f"RMS: {rms}")
 
-# SVD: covariance matrix
-W = np.eye(len(di))
-cov = centered_A1.T @ W @ centered_A2
-u, s, vh = np.linalg.svd(cov)
+    return R, t
 
-# SVD: computing svd, R and t
-mid = np.eye(3)
-mid[-1][-1] = np.linalg.det(vh.T @ u.T)
+source, target = open_wave_data()
+vis_open3d(source)
+vis_open3d(target)
+R, t = ICP(source, target, 0.5)
 
-r = vh.T @ mid @ u
-t = np.mean(A1, axis=0) - r @ centered_A1
+source_tr = source @ R + t
 
-print(r)
-print(t)
+a = np.append(source, source_tr, axis=0)
+vis_open3d(a)
+
 ###### 0. (adding noise)
 
 ###### 1. initialize R= I , t= 0
