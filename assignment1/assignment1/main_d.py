@@ -2,15 +2,10 @@ import numpy as np
 import open3d as o3d
 import os
 import matplotlib.pyplot as plt
+import sampling_methods as sm
 
 # globals.
 DATA_DIR = 'Data'  # This depends on where this file is located. Change for your needs.
-
-
-######                                                           ######
-##      notice: This is just some example, feel free to adapt        ##
-######                                                           ######
-
 
 # == Load data ==
 def vis_open3d(data):
@@ -26,6 +21,7 @@ def open3d(path, vis=False):
     pcd_arr = np.asarray(pcd.points)
 
     # clean the point cloud using a threshold
+    # distances to origin (0,0,0)
     distances = np.sqrt(np.sum(pcd_arr ** 2, axis = 1))
     pcd_arr_cleaned = pcd_arr[distances < 2]
 
@@ -34,126 +30,95 @@ def open3d(path, vis=False):
 
     return pcd_arr_cleaned
 
-
 def open_wave_data():
     target = np.load(os.path.join(DATA_DIR, 'wave_target.npy')).T
     source = np.load(os.path.join(DATA_DIR, 'wave_source.npy')).T
     return source, target
-
 
 def open_bunny_data():
     target = np.load(os.path.join(DATA_DIR, 'bunny_target.npy')).T
     source = np.load(os.path.join(DATA_DIR, 'bunny_source.npy')).T
     return source, target
 
-
-############################
-#     ICP                  #
-############################
-def min_dist(source, dest):
+def min_dist(source, target):
     """
-    Get point with minimal distance to source point for each point in source.
+    Get point with minimal distance to source from target for each point in source.
     """
     idx = []
 
     for sample in source:
-        dist = np.linalg.norm(sample - dest, axis=1)
+        dist = np.linalg.norm(target - sample, axis=1)
         idx.append(np.argmin(dist))
 
-    result = dest[idx]
+    result = target[idx]
     return result
 
-
-def calc_R_t(source_trans, target):
+def calc_R_t(source, target):
     """
     compute R and t for a given translated source and target point cloud.
     """
-    # compute closest points from A2 to A1
-    target_BF = min_dist(source_trans, target)
+    source_mean = np.mean(source, axis=0)
+    target_mean = np.mean(target, axis=0)
 
-    # SVD: mean and centereing
-    source_trans_mean = np.mean(source_trans, axis=0)
-    target_mean = np.mean(target_BF, axis=0)
-    centered_source_trans = source_trans - source_trans_mean
-    centered_target = target_BF - target_mean
+    source_centered = (source - source_mean).T
+    target_centered = (target - target_mean).T
 
-    # SVD: covariance matrix
-    W = np.eye(len(source_trans))
-    cov = centered_source_trans.T @ W @ centered_target
-
-    # SVD: computing svd, R and t
-    u, s, vh = np.linalg.svd(cov)
-
+    cov = source_centered @ target_centered.T
+    U, S, VT = np.linalg.svd(cov)
     mid = np.eye(3)
-    mid[-1][-1] = np.linalg.det(vh.T @ u.T)
+    mid[-1][-1] = np.linalg.det(VT.T @ U.T)
 
-    R = vh.T @ mid @ u
-    t = target_mean - R @ source_trans_mean
+    R = VT.T @ mid @ U.T
+    t = target_mean - R @ source_mean
 
     return R, t
-
 
 def ICP(source, target, th=0.9):
     """
     Perform ICP algorithm and return rotation matrix and translation vector.
     """
-    # initialize R and t
     R = np.eye(3)
-    t = np.zeros((3))
+    t = np.zeros(3)
 
-    rms = np.inf
-    source_trans = source @ R + t
+    RMS_old = 100
+    source_old = source
 
-    while rms > th:
-        R, t = calc_R_t(source_trans, target)
+    while True:
 
-        source_trans = source @ R + t
-        rms = np.sqrt(np.mean(np.linalg.norm(source - source_trans, axis=1)))
-        print(f"RMS: {rms}")
+        source_trans = source_old @ R.T + t
+        target_BF = min_dist(source_trans, target)
 
+        RMS = np.sqrt(np.mean(np.linalg.norm(target_BF - source_trans, axis=1)))
+        print(RMS)
+
+        if RMS < th or np.abs(RMS - RMS_old) < 1e-3:
+            break
+
+        source_old = source_trans
+        R, t = calc_R_t(source_old, target_BF)
     return R, t
 
 source, target = open_wave_data()
-vis_open3d(source)
-vis_open3d(target)
-R, t = ICP(source, target, 0.5)
+# source, target = open_bunny_data()
+
+ratio = 5
+source = sm.multi_resolution(source, ratio)
+target = sm.multi_resolution(target, ratio)
+
+R, t = ICP(source, target, 0.3)
 
 source_tr = source @ R + t
 
-a = np.append(source, source_tr, axis=0)
-vis_open3d(a)
+o3dvis = True
+matplotvis = False
 
-###### 0. (adding noise)
+if o3dvis:
+    final = np.append(source, source_tr, axis=0)
+    vis_open3d(final)
 
-###### 1. initialize R= I , t= 0
-
-###### go to 2. unless RMS is unchanged(<= epsilon)
-
-###### 2. using different sampling methods
-
-###### 3. transform point cloud with R and t
-
-###### 4. Find the closest point for each point in A1 based on A2 using brute-force approach
-
-###### 5. Calculate RMS
-
-###### 6. Refine R and t using SVD
-
-# plt.scatter(A1[:,0], A1[:, 1], label='A1', alpha=0.5)
-# plt.scatter(A2[:, 0], A2[:, 1], label='A2', alpha=0.5)
-# plt.scatter(di[:, 0], di[:, 1], label='min', alpha=0.5, s=3)
-# plt.show()
-############################
-#   Merge Scene            #
-############################
-
-#  Estimate the camera poses using two consecutive frames of given data.
-
-#  Estimate the camera pose and merge the results using every 2nd, 4th, and 10th frames.
-
-#  Iteratively merge and estimate the camera poses for the consecutive frames.
-
-
-############################
-#  Additional Improvements #
-############################
+if matplotvis:
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
+    ax.scatter3D(source[:,0], source[:,1], source[:,2], s=1)
+    ax.scatter3D(source_tr[:,0], source_tr[:,1], source_tr[:,2], s=1)
+    plt.show()
