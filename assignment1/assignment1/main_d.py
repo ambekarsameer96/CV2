@@ -73,7 +73,7 @@ def calc_R_t(source, target):
 
     return R, t
 
-def ICP(source, target, th=0.9):
+def ICP(source, target, th=0.9, iterative=False):
     """
     Perform ICP algorithm and return rotation matrix and translation vector.
     """
@@ -87,38 +87,63 @@ def ICP(source, target, th=0.9):
 
         source_trans = source_old @ R.T + t
         target_BF = min_dist(source_trans, target)
-
         RMS = np.sqrt(np.mean(np.linalg.norm(target_BF - source_trans, axis=1)))
-        print(RMS)
 
-        if RMS < th or np.abs(RMS - RMS_old) < 1e-3:
+        if RMS < th or np.abs(RMS - RMS_old) < 1e-2:
             break
 
-        source_old = source_trans
-        R, t = calc_R_t(source_old, target_BF)
+        R, t = calc_R_t(source_trans, target_BF)
+        RMS_old = RMS
+        if iterative:
+            source_old = source_trans
+
     return R, t
+
+def run_ICP(source, target):
+    R, t = ICP(source, target, 0.3)
+    source_tr = source @ R + t
+
+    if o3dvis:
+        final = np.append(source, source_tr, axis=0)
+        vis_open3d(final)
+
+    if matplotvis:
+        fig = plt.figure()
+        ax = plt.axes(projection='3d')
+        ax.scatter3D(source[:,0], source[:,1], source[:,2], s=1)
+        ax.scatter3D(source_tr[:,0], source_tr[:,1], source_tr[:,2], s=1)
+        plt.show()
 
 source, target = open_wave_data()
 # source, target = open_bunny_data()
 
+
+# Using all points
+run_ICP(source, target)
+
+# Uniform sub-sampling
+source_unif = sm.unif_sampling(source)
+target_unif = sm.unif_sampling(target)
+run_ICP(source_unif, target_unif)
+
+# Random sub-sampling
+
+
+# Multi-resolution sub-sampling
 ratio = 5
-source = sm.multi_resolution(source, ratio)
-target = sm.multi_resolution(target, ratio)
+source_multires = sm.multires_sampling(source)
+target_multires = sm.multires_sampling(target)
+run_ICP(source_multires, target_multires)
 
-R, t = ICP(source, target, 0.3)
+# Informative region sub-sampling
 
-source_tr = source @ R + t
-
-o3dvis = True
-matplotvis = False
-
-if o3dvis:
-    final = np.append(source, source_tr, axis=0)
-    vis_open3d(final)
-
-if matplotvis:
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-    ax.scatter3D(source[:,0], source[:,1], source[:,2], s=1)
-    ax.scatter3D(source_tr[:,0], source_tr[:,1], source_tr[:,2], s=1)
-    plt.show()
+# window = 9
+# for i, x in enumerate(source):
+#     win_y_top = np.minimum(target.shape[0], i + window // 2)
+#     win_y_bot = np.maximum(0, i - window // 2)
+#     for j, y in enumerate(x):
+#         win_x_l = np.maximum(0, j - window // 2)
+#         win_x_r = np.minimum(target.shape[1], j + window // 2)
+#
+#         window_content = target[win_y_bot: win_y_top, win_x_l: win_x_r]
+#         min_dist(source, target)
