@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 import os
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import sampling_methods as sm
 
@@ -73,7 +74,7 @@ def calc_R_t(source, target):
 
     return R, t
 
-def ICP(source, target, th=0.9, iterative=False):
+def ICP(source, target, th=0.9, iterative=True):
     """
     Perform ICP algorithm and return rotation matrix and translation vector.
     """
@@ -99,7 +100,7 @@ def ICP(source, target, th=0.9, iterative=False):
 
     return R, t
 
-def run_ICP(source, target):
+def run_ICP(source, target, o3dvis=False, matplotvis=False):
     R, t = ICP(source, target, 0.3)
     source_tr = source @ R + t
 
@@ -131,8 +132,8 @@ run_ICP(source_unif, target_unif)
 
 # Multi-resolution sub-sampling
 ratio = 5
-source_multires = sm.multires_sampling(source)
-target_multires = sm.multires_sampling(target)
+source_multires = sm.multires_sampling(source, ratio)
+target_multires = sm.multires_sampling(target, ratio)
 run_ICP(source_multires, target_multires)
 
 # Informative region sub-sampling

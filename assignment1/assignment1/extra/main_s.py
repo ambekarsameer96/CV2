@@ -41,16 +41,21 @@ def open_bunny_data():
     source = np.load(os.path.join(DATA_DIR, 'bunny_source.npy')).T
     return source, target
 
-def min_dist(source, target):
+def min_dist(source, target, pr=False):
     """
     Get point with minimal distance to source from target for each point in source.
     """
     idx = []
-
     for sample in source:
         dist = np.linalg.norm(target - sample, axis=1)
-
         idx.append(np.argmin(dist))
+
+        if pr:
+            pass
+
+    if pr:
+        idx = np.unravel_index(idx, target.shape[:2])
+        print(idx)
 
     result = target[idx]
     return result
@@ -229,15 +234,17 @@ def z_buffer(source_tr, target, H, W):
     for i, y in enumerate(source_buffer_3d):
         win_y_top = np.minimum(target_buffer_3d.shape[0], i + window // 2)
         win_y_bot = np.maximum(0, i - window // 2)
-
         for j, x in enumerate(y):
+
             if np.all(x == np.inf):
                 continue
 
             win_x_l = np.maximum(0, j - window // 2)
             win_x_r = np.minimum(target_buffer_3d.shape[1], j + window // 2)
             window_content = target_buffer_3d[win_y_bot: win_y_top, win_x_l: win_x_r]
-            matches.append(min_dist([x], window_content))
+            matches.append(min_dist([x], window_content, pr=True))
+
+    return matches
 
 source_tr = source @ R.T + t
 z_buffer(source_tr, target, 128, 100)
