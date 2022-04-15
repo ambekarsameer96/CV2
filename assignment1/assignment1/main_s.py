@@ -1,17 +1,12 @@
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 import os
-import matplotlib.pyplot as plt
 from copy import deepcopy
+import matplotlib.pyplot as plt
+import sampling_methods as sm
 
 # globals.
 DATA_DIR = 'Data'  # This depends on where this file is located. Change for your needs.
-
-
-######                                                           ######
-##      notice: This is just some example, feel free to adapt        ##
-######                                                           ######
-
 
 # == Load data ==
 def vis_open3d(data):
@@ -27,6 +22,7 @@ def open3d(path, vis=False):
     pcd_arr = np.asarray(pcd.points)
 
     # clean the point cloud using a threshold
+    # distances to origin (0,0,0)
     distances = np.sqrt(np.sum(pcd_arr ** 2, axis = 1))
     pcd_arr_cleaned = pcd_arr[distances < 2]
 
@@ -35,93 +31,117 @@ def open3d(path, vis=False):
 
     return pcd_arr_cleaned
 
-
 def open_wave_data():
     target = np.load(os.path.join(DATA_DIR, 'wave_target.npy')).T
     source = np.load(os.path.join(DATA_DIR, 'wave_source.npy')).T
     return source, target
-
 
 def open_bunny_data():
     target = np.load(os.path.join(DATA_DIR, 'bunny_target.npy')).T
     source = np.load(os.path.join(DATA_DIR, 'bunny_source.npy')).T
     return source, target
 
-
-############################
-#     ICP                  #
-############################
-def min_dist(source, dest):
+def min_dist(source, target):
     """
-    Get point with minimal distance to source point for each point in source.
+    Get point with minimal distance to source from target for each point in source.
     """
     idx = []
 
     for sample in source:
-        dist = np.linalg.norm(sample - dest, axis=1)
+        dist = np.linalg.norm(target - sample, axis=1)
+
         idx.append(np.argmin(dist))
 
-    result = dest[idx]
+    result = target[idx]
     return result
 
-
-def calc_R_t(source_trans, target):
+def calc_R_t(source, target):
     """
     compute R and t for a given translated source and target point cloud.
     """
-    # compute closest points from A2 to A1
-    target_BF = min_dist(source_trans, target)
+    source_mean = np.mean(source, axis=0)
+    target_mean = np.mean(target, axis=0)
 
-    # SVD: mean and centereing
-    source_trans_mean = np.mean(source_trans, axis=0)
-    target_mean = np.mean(target_BF, axis=0)
-    centered_source_trans = source_trans - source_trans_mean
-    centered_target = target_BF - target_mean
+    source_centered = (source - source_mean).T
+    target_centered = (target - target_mean).T
 
-    # SVD: covariance matrix
-    W = np.eye(len(source_trans))
-    cov = centered_source_trans.T @ W @ centered_target
-
-    # SVD: computing svd, R and t
-    u, s, vh = np.linalg.svd(cov)
-
+    cov = source_centered @ target_centered.T
+    U, S, VT = np.linalg.svd(cov)
     mid = np.eye(3)
-    mid[-1][-1] = np.linalg.det(vh.T @ u.T)
+    mid[-1][-1] = np.linalg.det(VT.T @ U.T)
 
-    R = vh.T @ mid @ u
-    t = target_mean - R @ source_trans_mean
+    R = VT.T @ mid @ U.T
+    t = target_mean - R @ source_mean
 
     return R, t
 
-
-def ICP(source, target, th=0.9):
+def ICP(source, target, th=0.9, iterative=True):
     """
     Perform ICP algorithm and return rotation matrix and translation vector.
     """
-    # initialize R and t
     R = np.eye(3)
-    t = np.zeros((3))
+    t = np.zeros(3)
 
-    rms = np.inf
-    source_trans = source @ R + t
+    RMS_old = 100
+    source_old = source
 
-    while rms > th:
-        R, t = calc_R_t(source_trans, target)
+    while True:
 
-        source_trans = source @ R + t
-        rms = np.sqrt(np.mean(np.linalg.norm(source - source_trans, axis=1)))
-        print(f"RMS: {rms}")
+        source_trans = source_old @ R.T + t
+        target_BF = min_dist(source_trans, target)
+        RMS = np.sqrt(np.mean(np.linalg.norm(target_BF - source_trans, axis=1)))
+
+        if RMS < th or np.abs(RMS - RMS_old) < 1e-2:
+            break
+
+        R, t = calc_R_t(source_trans, target_BF)
+        RMS_old = RMS
+        if iterative:
+            source_old = source_trans
+
+    print(RMS)
+    return R, t
+
+def run_ICP(source, target, o3dvis=False, matplotvis=False):
+    R, t = ICP(source, target, 0.3)
+    source_tr = source @ R + t
+
+    if o3dvis:
+        final = np.append(source, source_tr, axis=0)
+        vis_open3d(final)
+
+    if matplotvis:
+        fig = plt.figure()
+        ax = plt.axes(projection='3d')
+        ax.scatter3D(source[:,0], source[:,1], source[:,2], s=1)
+        ax.scatter3D(source_tr[:,0], source_tr[:,1], source_tr[:,2], s=1)
+        plt.show()
 
     return R, t
 
+
 source, target = open_wave_data()
-vis_open3d(source)
-vis_open3d(target)
+# source, target = open_bunny_data()
+
+# Using all points
+R, t = run_ICP(source, target)
+
+# Uniform sub-sampling
+# source_unif = sm.unif_sampling(source)
+# target_unif = sm.unif_sampling(target)
+# run_ICP(source_unif, target_unif)
+
+# Random sub-sampling
 
 
-R, t = ICP(source, target, 0.89)
+# Multi-resolution sub-sampling
+# ratio = 5
+# source_multires = sm.multires_sampling(source, ratio)
+# target_multires = sm.multires_sampling(target, ratio)
+# run_ICP(source_multires, target_multires)
 
-source_tr = source @ R + t
+# Informative region sub-sampling
+
 
 def min_dist_buffer(source, target):
     """
@@ -157,7 +177,7 @@ def z_buffer(source_tr, target, H, W):
     # Dimensions of the box
     max_hor = abs(max_x - min_x)
     max_ver = abs(max_y - min_y)
-    # Step for each dimenssion 
+    # Step for each dimenssion
     hor_const = max_hor/(W-1)
     ver_const = max_ver/(H-1)
     # Fill in the bounding box
@@ -168,7 +188,7 @@ def z_buffer(source_tr, target, H, W):
                 x_cor = min_x
                 y_cor = max_y - i*ver_const
                 bound_box [i][j] = (x_cor, y_cor)
-            else: 
+            else:
                 x_cor = min_x + j*hor_const
                 bound_box [i][j] = (x_cor, y_cor)
             count += 1
@@ -202,9 +222,25 @@ def z_buffer(source_tr, target, H, W):
         target_buffer[idx, 2] = original_z
     target_buffer_3d = np.reshape(np.array(target_buffer), (128, 100, 3))
 
+    window = 10
 
-#a = np.append(source, source_tr, axis=0)
-#vis_open3d(a)
+    matches = []
+
+    for i, y in enumerate(source_buffer_3d):
+        win_y_top = np.minimum(target_buffer_3d.shape[0], i + window // 2)
+        win_y_bot = np.maximum(0, i - window // 2)
+
+        for j, x in enumerate(y):
+            if np.all(x == np.inf):
+                continue
+
+            win_x_l = np.maximum(0, j - window // 2)
+            win_x_r = np.minimum(target_buffer_3d.shape[1], j + window // 2)
+            window_content = target_buffer_3d[win_y_bot: win_y_top, win_x_l: win_x_r]
+            matches.append(min_dist([x], window_content))
+
+source_tr = source @ R.T + t
+z_buffer(source_tr, target, 128, 100)
 
 ###### 0. (adding noise)
 
