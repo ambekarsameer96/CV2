@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.neighbors import KDTree
 from sklearn.neighbors import KernelDensity
 
-def multires_sampling(points, RMS_li):
+def multires_sampling(points, RMS_li, **args):
     amount = len(points) // 100
     if len(RMS_li) > 1:
         ratio = (RMS_li[0] - RMS_li[-1]) / RMS_li[0]
@@ -21,17 +21,16 @@ def step_sampling(points):
     return points[::amount]
 
 
-def uniform_sampling(points, *args):
-    ratio = 4
+def uniform_sampling(points, ratio, **args):
     idx = np.random.choice(len(points), len(points) // ratio)
     return points[idx]
 
 
-def no_sampling(points, *args):
+def no_sampling(points, **args):
     return points
 
 
-def density_sampling(points, *args):
+def density_sampling(points, **args):
     #sub-sampling from points by density
     #find nearest neighbors
     kde = KernelDensity(leaf_size=20, bandwidth=0.2).fit(points)

@@ -65,3 +65,13 @@ def file_picker(file_path):
                 file1 = os.path.join(file_path, file1)
                 l1.append(file1)
     return l1
+
+def add_noise(points, noise_variance, noise_amount):
+    """
+    Adds noise to pointcloud
+    """
+    mean = np.mean(points, axis=0)
+    cov_vec = [noise_variance] * points.shape[1]
+    cov = np.cov(points, rowvar=False) * noise_variance
+    noise = np.random.multivariate_normal(mean=mean, cov=cov, size=noise_amount)
+    return np.vstack((points, noise))

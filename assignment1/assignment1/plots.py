@@ -12,4 +12,6 @@ def RMS_it_plot(pickle_data, title):
     plt.legend()
     plt.show()
 
-RMS_it_plot("unif_RMS_li.pl", title="RMS/it for uniform sampling with different ratios")
+
+RMS_it_plot('results/unif_RMS_li.pl', title="RMS/it for uniform sampling with different ratios")
+RMS_it_plot('results/RMS31.pl', title="RMS/it for uniform sampling with different ratios")

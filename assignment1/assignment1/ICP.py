@@ -1,19 +1,6 @@
-from scipy.stats import multivariate_normal
 import sampling_matching_methods as sm
 from audioop import add
 import numpy as np
-
-def add_noise(points):
-    """
-    Adds noise to pointcloud
-    """
-    # mean = np.mean(points, axis=0)
-    # std = np.std(points, axis=0)
-    # print(std.shape)
-    # noise = multivariate_normal.pdf(points, mean=mean, cov=std)
-    # noise = multivariate_normal.pdf(points, mean=np.zeros(3), cov=np.eye(3))
-    return noise
-
 
 def calc_R_t(source, target):
     """
@@ -34,7 +21,6 @@ def calc_R_t(source, target):
     t = target_mean - (R @ source_mean)
     return R, t
 
-
 def rototranslation(Rt, R, t):
     """
     update rototranslation matrix Rt with R and t.
@@ -43,6 +29,14 @@ def rototranslation(Rt, R, t):
     Rt_add[:3, :3] = R
     Rt_add[:3, 3] = t
     return Rt @ Rt_add
+
+def compute_RMS(source, target):
+    # match points from target to points from source
+    target_BF, source_sampled_intersection = sm.kd_method(source_sampled, target)
+
+    # compute RMS
+    RMS = np.sqrt(np.mean(np.linalg.norm(target_BF - source_sampled_intersection, axis=1)))
+    return RMS
 
 def compute_translation(points, Rt):
     """
@@ -63,9 +57,6 @@ def ICP(source, target, th=0.001,
     if sampling_fn is None:
         sampling_fn = sm.no_sampling
 
-    if iterative_sampling_fn is None:
-        iterative_sampling_fn = sm.no_sampling
-
     R = np.eye(3)
     t = np.zeros(3)
     Rt = np.eye(4)
@@ -74,12 +65,12 @@ def ICP(source, target, th=0.001,
     RMS_prev = 100
     iterations = 500
 
-    source_sampled = sampling_fn(source, sampling_fn_ratio)
-    target = sampling_fn(target, sampling_fn_ratio)
+    source_sampled = sampling_fn(source, ratio=sampling_fn_ratio)
+    target = sampling_fn(target, ratio=sampling_fn_ratio)
 
     for _ in range(iterations):
         if iterative_sampling_fn is not None:
-            source_sampled = iterative_sampling_fn(source, RMS_li, iterative_sampling_fn_ratio)
+            source_sampled = iterative_sampling_fn(source, RMS_li=RMS_li, ratio=iterative_sampling_fn_ratio)
 
         # match points from target to points from source
         target_BF, source_sampled_intersection = matching_fn(source_sampled, target)
