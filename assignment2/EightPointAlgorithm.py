@@ -21,7 +21,6 @@ def calculate_keypoint_matching(img1, img2):
     bf = cv.BFMatcher(cv.NORM_L1, crossCheck=True)
     matches = bf.match(des1, des2)
     matches = sorted(matches, key=lambda x: x.distance)
-    
     return kp1, kp2, matches
 
 def matrix_T(x,y):
@@ -91,23 +90,25 @@ def F_RANSAC(x1, x2, y1, y2, p1, p2, num_iter, thr):
 
         F = matrix_F(x1_8, y1_8, x2_8, y2_8, p1_8, p2_8, 'normal')
         d = Sampson_distance(F, p1, p2)
+        #print(np.array(d).shape)
 
         d_thr = []
         ind_thr = []
         for j, dim in enumerate(d):
+            #print(j,dim)
             if dim <= thr:
                 d_thr.append(dim)
                 ind_thr.append(j)
 
         if len(d_thr) > len(max_d_thr):
+            #print(len(d_thr))
             max_d_thr = d_thr
             max_ind = ind_thr
-    
+    print(len(max_ind))
     x1_max, x2_max = x1[max_ind], x2[max_ind]
     y1_max, y2_max = y1[max_ind], y2[max_ind]
     p1_max, p2_max = p1[max_ind], p2[max_ind]
     F = matrix_F(x1_max, y1_max, x2_max, y2_max, p1_max, p2_max, 'normal')
-
     return F, max_ind
 
 def drawlines(img1,img2,lines,pts1,pts2):
@@ -144,10 +145,14 @@ def plotting(img1, img2, pts1, pts2, F):
 
 def eight_point(first_frame, second_frame, method, num_iter, thr):
     #load two cosequitive frames
+    random.seed(42)
     img1, img2 = load_image_gray(first_frame, second_frame)
 
     #calculate matching keypoints
     kp1, kp2, matches = calculate_keypoint_matching(img1, img2)
+    print(np.array(kp1).shape)
+    print(np.array(kp2).shape)
+    print(np.array(matches).shape)
     
     templist = []
     for match in matches:
@@ -169,6 +174,7 @@ def eight_point(first_frame, second_frame, method, num_iter, thr):
         F, _ = F_RANSAC(x1, x2, y1, y2, p1, p2, num_iter, thr)
     
     plotting(img1, img2, p1, p2, F)
+    return F, p1, p2
 
 
 if __name__ == '__main__':
@@ -178,9 +184,9 @@ if __name__ == '__main__':
     # Model hyperparameters
     parser.add_argument('--first_frame', default='01', type=str, help='first_frame')
     parser.add_argument('--second_frame', default='02', type=str, help='second_frame')
-    parser.add_argument('--method', default='ransac', type=str, help='choose method between simple/normal/ransac', choices=['simple', 'normal', 'ransac'])
-    parser.add_argument('--num_iter', default=100, type=int, help='number of iterations for RANSAC method')
-    parser.add_argument('--thr', default=0.05, type=int, help='threshold on Sampson disatances for RANSAC method')
+    parser.add_argument('--method', default='simple', type=str, help='choose method between simple/normal/ransac', choices=['simple', 'normal', 'ransac'])
+    parser.add_argument('--num_iter', default=300, type=int, help='number of iterations for RANSAC method')
+    parser.add_argument('--thr', default=0.3, type=int, help='threshold on Sampson disatances for RANSAC method')
 
     args = parser.parse_args()
     kwargs = vars(args)
