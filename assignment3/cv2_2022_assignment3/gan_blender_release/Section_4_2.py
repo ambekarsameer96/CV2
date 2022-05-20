@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 from math import radians, cos, sin, tan
 import matplotlib.pyplot as plt
+import cv2
 from supplemental_code.supplemental_code import *
 
 def load_weights(bfm, model, dim, M):
@@ -112,18 +113,29 @@ def visualize_landmark(pred):
     plt.savefig('landmarks.png')
 
 def main():
+    #--------------------------------------------------------------------#
     # part 4.2.1
     G, triangle, color = morphable_model()
     save_obj('3D.obj', G, color, triangle.T)
+    #--------------------------------------------------------------------#
     # part 4.2.2.a
     rotation = [0, 10, 0]
     translation = [0, 0, -500]
     Trans_G, image_2d = pinhole_camera_model(rotation, translation, G)
     save_obj('3D_right_rot.obj', Trans_G.T[:, :3], color, triangle.T)
+    #--------------------------------------------------------------------#
     # part 4.2.2.b
     uv, homog = load_landmark(image_2d)
     # U,V projection (corresponding 2D pixel coordinate of each 3D point)
     uv_2d = (uv.T / homog).T
     visualize_landmark(uv_2d)
+    #--------------------------------------------------------------------#
+    # part 4.2.3.a
+    img = cv2.imread('neutral_image.jpg')
+    gt_landmark = detect_landmark(img)
+    for (x, y) in gt_landmark:
+        cv2.circle(img, (x, y), 2, (0, 255, 0), 2)
+        cv2.imwrite('landmark_gt.jpg', img)
+
 
 main()
