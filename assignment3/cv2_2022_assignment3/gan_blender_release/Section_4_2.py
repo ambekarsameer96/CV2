@@ -1,7 +1,9 @@
 from statistics import variance
+from tkinter import N
 import h5py
 import numpy as np
-from math import radians, cos, sin
+from math import radians, cos, sin, tan
+import matplotlib.pyplot as plt
 from supplemental_code.supplemental_code import *
 
 def load_weights(bfm, model, dim, M):
@@ -34,9 +36,6 @@ def morphable_model():
     
     return G, triangle, color
 
-G, triangle, color = morphable_model()
-save_obj('3D.obj', G, color, triangle.T)
-
 def trig(angle):
   r = radians(angle)
   return cos(r), sin(r)
@@ -68,14 +67,63 @@ def matrixT(rotation, translation):
 
     return np.dot(Rotate_Z_matrix,np.dot(Rotate_Y_matrix,np.dot(Rotate_X_matrix,Translate_matrix)))
 
-def pinhole_camera_model(rotation, translation):
+def pinhole_camera_model(rotation, translation, G):
+    # set new coordinates
+    n = 12
+    f = 108
+    fov = 0.5
+    aspect_ratio = 1
+    t = tan(fov/2)*n
+    b = -t
+    r = t*aspect_ratio
+    l = b
+    # calculate transformation matrix T
     matT = matrixT(rotation, translation)
-    P = np.array([[(2*n)/(r-l), 0, (r+l)/(r-l), 0],
-                    [0, (2*n)/(t-b), (t+b)/(t-b), 0],
-                    [0, 0, -(f+n)/(f-n), -(2*f*n)/(f-n)],
-                    [0, 0, -1, 0]])
-
+     # calculate viewpoint matrix
     Vp = np.array([[(r-l)/2, 0, 0, (r+l)/2],
                     [0, (t-b)/2, 0, (t+b)/2],
                     [0, 0, 0.5, 0.5],
                     [0, 0, 0, 1]])
+    # calculate projection matrix
+    P = np.array([[(2*n)/(r-l), 0, (r+l)/(r-l), 0],
+                    [0, (2*n)/(t-b), (t+b)/(t-b), 0],
+                    [0, 0, -(f+n)/(f-n), -(2*f*n)/(f-n)],
+                    [0, 0, -1, 0]])
+    # add ones to 3D points
+    G_4D = np.c_[G, np.ones(G.shape[0])]
+    Trans_G = np.matmul(matT, G_4D.T)
+    PI = np.matmul(Vp, P)
+    image_2d = np.matmul(PI, Trans_G)
+    return Trans_G, image_2d
+
+def load_landmark(image_2d):
+    f = open('supplemental_code/Landmarks68_model2017-1_face12_nomouth.anl','r')
+    lines = f.readlines()
+    # put indices to a list
+    lines = [int(line) for line in lines]
+    # find the mappings
+    pred = image_2d.T[:, :2][lines]
+    # return the prediction and the homogeneous coordinate
+    return pred, image_2d.T[lines][:, 3]
+
+def visualize_landmark(pred):
+    plt.scatter(pred[:,0], pred[:,1], s = 12)
+    plt.grid(True)
+    plt.savefig('landmarks.png')
+
+def main():
+    # part 4.2.1
+    G, triangle, color = morphable_model()
+    save_obj('3D.obj', G, color, triangle.T)
+    # part 4.2.2.a
+    rotation = [0, 10, 0]
+    translation = [0, 0, -500]
+    Trans_G, image_2d = pinhole_camera_model(rotation, translation, G)
+    save_obj('3D_right_rot.obj', Trans_G.T[:, :3], color, triangle.T)
+    # part 4.2.2.b
+    uv, homog = load_landmark(image_2d)
+    # U,V projection (corresponding 2D pixel coordinate of each 3D point)
+    uv_2d = (uv.T / homog).T
+    visualize_landmark(uv_2d)
+
+main()
