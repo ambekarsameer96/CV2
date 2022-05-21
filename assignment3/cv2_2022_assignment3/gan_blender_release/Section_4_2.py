@@ -3,7 +3,7 @@ from tkinter import N
 from winreg import DeleteValue
 import h5py
 import numpy as np
-from math import radians, cos, sin, tan
+from math import radians, cos, sin, tan, floor
 import matplotlib.pyplot as plt
 import cv2
 import torch
@@ -190,6 +190,13 @@ def train(bfm, lr, epochs, seed, rotation, translation, alpha, delta, la, ld):
     
     return losses, best_model
 
+def bi_inter(x, y, x1, x2, y1, y2, img):
+    f_x_y1 = ((x2-x)/(x2-x1))*img[x1,y1] + ((x-x1)/(x2-x1))*img[x2,y1]
+    f_x_y2 = ((x2-x)/(x2-x1))*img[x1,y2] + ((x-x1)/(x2-x1))*img[x2,y2]
+    f_x_y = ((y2-y)/(y2-y1))*f_x_y1 + ((y-y1)/(y2-y1))*f_x_y2
+    return f_x_y
+
+
 def main():
     #--------------------------------------------------------------------#
     # part 4.2.1
@@ -220,7 +227,7 @@ def main():
         cv2.circle(img, (x, y), 2, (0, 255, 0), 2)
         cv2.imwrite('landmark_gt.jpg', img)
     #--------------------------------------------------------------------#
-    # part 4.2.3.b
+    '''# part 4.2.3.b
     lr = 0.01
     epochs = 200
     seed = 42
@@ -237,7 +244,39 @@ def main():
     save_obj('trained_3D_right_rot.obj', Trans_G.T[:, :3], color, triangle.T)
     uv, homog = load_landmark(image_2d)
     uv_2d = (uv.T / homog).T
-    visualize_landmark(uv_2d, 'trained_landmark.jpg')
+    visualize_landmark(uv_2d, 'trained_landmark.jpg')'''
     #--------------------------------------------------------------------#
+    #part 4.2.4
+    img = cv2.imread('neutral_image.jpg')
+    # here needs again the models parameter (e.g best_model.alpha)
+    G, triangle, color = morphable_model(bfm, alpha, delta)
+    Trans_G, image_2d = pinhole_camera_model(rotation, translation, G)
+    # apply 2D projection on the whole image
+    temp_pred = image_2d.T[:, :3]
+    pred = image_2d.T[:, :2]
+    homog = image_2d.T[:, 3]
+
+    '''triangle[0,:] = [floor(x) for x in triangle[0,:]]
+    triangle[1,:] = [floor(x) for x in triangle[1,:]]
+    triangle[2,:] = [floor(x) for x in triangle[2,:]]'''
+
+    pred_3d = (temp_pred.T / homog).T
+    pred_2d = (pred.T / homog).T
+
+    color = []
+    for ch in range(img.shape[2]):
+        ch_color = []
+        for i, j in pred_2d:
+            int_i = floor(i)
+            int_j = floor(j)
+            x1, x2 = int_i - 1, int_i + 1
+            y1, y2 = int_j - 1, int_j + 1
+            imag = img[:, :, ch]
+            f_x_y = bi_inter(x, y, x1, x2, y1, y2, imag)
+            ch_color.append(f_x_y)
+        color.append(ch_color)
+    color_ar = np.asarray(color).T
+    image = render(pred_3d, color_ar, triangle.T)
+    cv2.imwrite('texturing_img.jpg', image)
 
 main()
