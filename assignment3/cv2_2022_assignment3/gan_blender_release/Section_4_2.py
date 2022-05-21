@@ -1,11 +1,38 @@
 from statistics import variance
 from tkinter import N
+from winreg import DeleteValue
 import h5py
 import numpy as np
 from math import radians, cos, sin, tan
 import matplotlib.pyplot as plt
 import cv2
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from supplemental_code.supplemental_code import *
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+class LatentNet(nn.Module):
+    def __init__(self, rotation, translation, alpha, delta):
+        super(LatentNet, self).__init__()
+        self.rotation = torch.tensor(rotation, dtype=torch.float32)
+        self.rotation = nn.Parameter(self.rotation, requires_grad = True)
+        self.translation = torch.tensor(translation, dtype=torch.float32)
+        self.translation = nn.Parameter(self.translation, requires_grad = True)
+        self.alpha = torch.tensor(alpha, dtype=torch.float32)
+        self.alpha = nn.Parameter(self.alpha, requires_grad = True)
+        self.delta = torch.tensor(delta, dtype=torch.float32)
+        self.delta = nn.Parameter(self.delta, requires_grad = True)
+
+    def forward(self, bfm):
+        G, _, _ = morphable_model(bfm, self.alpha.detach().numpy(), self.delta.detach().numpy())
+        _, image_2d = pinhole_camera_model(self.rotation.detach().numpy(), self.translation.detach().numpy(), G)
+        uv, homog = load_landmark(image_2d)
+        uv_2d = (uv.T / homog).T
+        uv_2d = torch.tensor(uv_2d, dtype=torch.float32)
+        return uv_2d
 
 def load_weights(bfm, model, dim, M):
     id = np.asarray(bfm[model+"/model/mean"] , dtype=np.float32)
@@ -16,15 +43,11 @@ def load_weights(bfm, model, dim, M):
     
     return id, basis, variance
 
-def morphable_model():
-    bfm = h5py.File("model2017-1_face12_nomouth.h5", "r")
+def morphable_model(bfm, alpha, delta):
     # Select facial identity from BFM
     mu_id, basis_id, variance_id = load_weights(bfm, "shape", 199, 30)
     # Select expression from BFM
     mu_exp, basis_exp, variance_exp = load_weights(bfm, "expression", 100, 20)
-    # Uniform distribution
-    alpha = np.random.uniform(-1, 1, 30)
-    delta = np.random.uniform(-1, 1, 20)
     # G calculation
     id_var = mu_id + np.matmul(basis_id, alpha * np.sqrt(variance_id))
     exp_var = mu_exp + np.matmul(basis_exp, delta * np.sqrt(variance_exp))
@@ -107,15 +130,75 @@ def load_landmark(image_2d):
     # return the prediction and the homogeneous coordinate
     return pred, image_2d.T[lines][:, 3]
 
-def visualize_landmark(pred):
+def visualize_landmark(pred, name):
     plt.scatter(pred[:,0], pred[:,1], s = 12)
     plt.grid(True)
-    plt.savefig('landmarks.png')
+    plt.savefig(name)
+
+def loss_estimation(uv, gt_landmark, la, ld, alpha, delta):
+    gt_landmark = torch.tensor(gt_landmark, dtype=torch.float32)
+    alpha = torch.tensor(alpha, dtype=torch.float32)
+    delta = torch.tensor(delta, dtype=torch.float32)
+    L_lan = torch.mean(torch.pow((uv - gt_landmark), 2))
+    L_reg = la*torch.sum(torch.pow(alpha, 2)) + ld*torch.sum(torch.pow(delta, 2))
+    L_fit = L_lan + L_reg
+    return L_fit
+
+def train(bfm, lr, epochs, seed, rotation, translation, alpha, delta, la, ld):
+    # Set the random seeds for reproducibility
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():  # GPU operation have separate seed
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.determinstic = True
+        torch.backends.cudnn.benchmark = False
+    # Set default device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = LatentNet(rotation, translation, alpha, delta)
+    optimizer = optim.SGD(model.parameters(), lr = lr)
+    model.to(device)
+
+    img =  cv2.imread('./cv2_2022_assignment3/input/000031.jpg')
+    gt_landmark = detect_landmark(img)
+
+    losses = []
+    model.train()
+    prev_loss = 1000000000000
+    prev_model = model
+    for epoch in range(epochs):
+        uv = model(bfm)
+        loss = loss_estimation(uv, gt_landmark, la, ld, model.alpha, model.delta)
+        losses.append(loss.item())
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        with torch.no_grad():
+            train_loss = torch.mean(losses)
+        if (train_loss > prev_loss + 0.1):
+            print('Training stopped due to early stopping')
+            best_model = prev_model
+            break
+        else:
+            prev_loss = train_loss
+            prev_model = model
+            
+        print("[{}] Epoch: {}/{} Loss: {} Acc: {}".format("train", epoch+1, epochs, train_loss))
+        print("-------------------------------------------------------------------------------------")
+    
+    return losses, best_model
 
 def main():
     #--------------------------------------------------------------------#
     # part 4.2.1
-    G, triangle, color = morphable_model()
+    bfm = h5py.File("model2017-1_face12_nomouth.h5", "r")
+    # Uniform distribution
+    alpha = np.random.uniform(-1, 1, 30)
+    delta = np.random.uniform(-1, 1, 20)
+
+    G, triangle, color = morphable_model(bfm, alpha, delta)
     save_obj('3D.obj', G, color, triangle.T)
     #--------------------------------------------------------------------#
     # part 4.2.2.a
@@ -128,7 +211,7 @@ def main():
     uv, homog = load_landmark(image_2d)
     # U,V projection (corresponding 2D pixel coordinate of each 3D point)
     uv_2d = (uv.T / homog).T
-    visualize_landmark(uv_2d)
+    visualize_landmark(uv_2d, 'landmark.jpg')
     #--------------------------------------------------------------------#
     # part 4.2.3.a
     img = cv2.imread('neutral_image.jpg')
@@ -136,6 +219,25 @@ def main():
     for (x, y) in gt_landmark:
         cv2.circle(img, (x, y), 2, (0, 255, 0), 2)
         cv2.imwrite('landmark_gt.jpg', img)
-
+    #--------------------------------------------------------------------#
+    # part 4.2.3.b
+    lr = 0.01
+    epochs = 200
+    seed = 42
+    la = 1
+    ld = 1
+    losses, best_model = train(bfm, lr, epochs, seed, rotation, translation, alpha, delta, la, ld)
+    plt.plot(losses)
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.savefig('loss.png')
+    G, triangle, color = morphable_model(bfm, best_model.alpha, best_model.delta)
+    save_obj('trained_3D.obj', G, color, triangle.T)
+    Trans_G, image_2d = pinhole_camera_model(best_model.rotation, best_model.translation, G)
+    save_obj('trained_3D_right_rot.obj', Trans_G.T[:, :3], color, triangle.T)
+    uv, homog = load_landmark(image_2d)
+    uv_2d = (uv.T / homog).T
+    visualize_landmark(uv_2d, 'trained_landmark.jpg')
+    #--------------------------------------------------------------------#
 
 main()
