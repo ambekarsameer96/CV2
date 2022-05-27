@@ -33,6 +33,11 @@ class SwappedDatasetLoader(Dataset):
     def __init__(self, data_file, prefix, resize=256):
         self.prefix = prefix
         self.resize = resize
+        if self.resize:
+            self.resize_transform = transforms.Resize(resize)
+        else:
+            self.resize_transform = None
+
         # Define your initializations and the transforms here. You can also
         # define your tensor transforms to normalize and resize your tensors.
         # As a rule of thumb, put anything that remains constant here.
@@ -52,7 +57,11 @@ class SwappedDatasetLoader(Dataset):
             self.data_paths.append(file_dict)
 
     def get_img(self, path):
-        return transforms.ToTensor()(Image.open(path))
+        img = transforms.ToTensor()(Image.open(path))
+        if self.resize_transform is not None:
+            img = self.resize_transform(img)
+
+        return img
 
     def __len__(self):
         # Return the length of the datastructure that is your dataset
