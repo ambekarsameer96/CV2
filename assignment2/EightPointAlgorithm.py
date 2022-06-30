@@ -10,14 +10,14 @@ def load_image_gray(frame1, frame2):
     img2 = cv.imread('./Data/House/House/frame000000'+frame2+'.png')
     img1 = cv.cvtColor(img1, cv.COLOR_RGB2GRAY)
     img2 = cv.cvtColor(img2, cv.COLOR_RGB2GRAY)
-    
+
     return img1, img2
 
-def calculate_keypoint_matching(img1, img2):
-    sift = cv.xfeatures2d.SIFT_create()
+def calculate_keypoint_matching(img1, img2, num_points=8):
+    sift = cv.SIFT_create()
     kp1, des1 = sift.detectAndCompute(img1,None)
     kp2, des2 = sift.detectAndCompute(img2,None)
-    
+
     bf = cv.BFMatcher(cv.NORM_L1, crossCheck=True)
     matches = bf.match(des1, des2)
     matches = sorted(matches, key=lambda x: x.distance)
@@ -56,7 +56,7 @@ def matrix_F(x1, y1, x2, y2, p1, p2, method):
 
     #the entries of F are the components of the column of V corresponding to the smallest singular value.
     F = V_T[-1].reshape(3, 3)
-    #find the SVD of F 
+    #find the SVD of F
     UF, DF, VF_T = np.linalg.svd(F)
     #set the smallest singular value in the diagonal matrix DF to zero
     DF[-1] = 0
@@ -81,7 +81,7 @@ def Sampson_distance(F, p1, p2):
 def F_RANSAC(x1, x2, y1, y2, p1, p2, num_iter, thr):
     indices = list(range(len(p1)))
     max_d_thr = []
-    
+
     for i in range(num_iter):
         idx = random.sample(indices, 8)
         x1_8, x2_8 = x1[idx], x2[idx]
@@ -95,15 +95,15 @@ def F_RANSAC(x1, x2, y1, y2, p1, p2, num_iter, thr):
         d_thr = []
         ind_thr = []
         for j, dim in enumerate(d):
-            #print(j,dim)
+
             if dim <= thr:
                 d_thr.append(dim)
                 ind_thr.append(j)
 
         if len(d_thr) > len(max_d_thr):
-            #print(len(d_thr))
             max_d_thr = d_thr
             max_ind = ind_thr
+
     print(len(max_ind))
     x1_max, x2_max = x1[max_ind], x2[max_ind]
     y1_max, y2_max = y1[max_ind], y2[max_ind]
@@ -131,14 +131,19 @@ def drawlines(img1,img2,lines,pts1,pts2):
 def plotting(img1, img2, pts1, pts2, F):
     # Find epilines corresponding to points in right image (second image) and
     # drawing its lines on left image
+    print(f"{pts2.shape=}")
     lines1 = cv.computeCorrespondEpilines(pts2.reshape(-1,1,2), 2,F)
     lines1 = lines1.reshape(-1,3)
-    img5,img6 = drawlines(img1,img2,lines1,pts1,pts2)
+
+    idx = np.random.choice(np.arange(len(pts1)), 8)
+
+    img5,img6 = drawlines(img1,img2,lines1[idx],pts1[idx],pts2[idx])
+
     # Find epilines corresponding to points in left image (first image) and
     # drawing its lines on right image
     lines2 = cv.computeCorrespondEpilines(pts1.reshape(-1,1,2), 1,F)
     lines2 = lines2.reshape(-1,3)
-    img3,img4 = drawlines(img2,img1,lines2,pts2,pts1)
+    img3,img4 = drawlines(img2,img1,lines2[idx],pts2[idx],pts1[idx])
     plt.subplot(121),plt.imshow(img5)
     plt.subplot(122),plt.imshow(img3)
     plt.show()
@@ -150,10 +155,7 @@ def eight_point(first_frame, second_frame, method, num_iter, thr):
 
     #calculate matching keypoints
     kp1, kp2, matches = calculate_keypoint_matching(img1, img2)
-    print(np.array(kp1).shape)
-    print(np.array(kp2).shape)
-    print(np.array(matches).shape)
-    
+
     templist = []
     for match in matches:
         (x1, y1) = kp1[match.queryIdx].pt
@@ -172,23 +174,28 @@ def eight_point(first_frame, second_frame, method, num_iter, thr):
         F = matrix_F(x1, y1, x2, y2, p1, p2, method)
     else:
         F, _ = F_RANSAC(x1, x2, y1, y2, p1, p2, num_iter, thr)
-    
+
+    p1 = p1[:,0:2]
+    p2 = p2[:,0:2]
+
     plotting(img1, img2, p1, p2, F)
+
+
     return F, p1, p2
 
 
 if __name__ == '__main__':
     # Command line arguments
     parser = argparse.ArgumentParser()
-    
+
     # Model hyperparameters
     parser.add_argument('--first_frame', default='01', type=str, help='first_frame')
     parser.add_argument('--second_frame', default='02', type=str, help='second_frame')
-    parser.add_argument('--method', default='simple', type=str, help='choose method between simple/normal/ransac', choices=['simple', 'normal', 'ransac'])
+    parser.add_argument('--method', default='normal', type=str, help='choose method between simple/normal/ransac', choices=['simple', 'normal', 'ransac'])
     parser.add_argument('--num_iter', default=300, type=int, help='number of iterations for RANSAC method')
     parser.add_argument('--thr', default=0.3, type=int, help='threshold on Sampson disatances for RANSAC method')
 
     args = parser.parse_args()
     kwargs = vars(args)
 
-    eight_point(**kwargs)
+    print(eight_point(**kwargs)[0])

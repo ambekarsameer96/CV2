@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<intrinsic type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>f</dt>
+  <data>
+    525. 0. 320. 0. 525. 240. 0. 0. 1.</data></intrinsic>
+<R type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>f</dt>
+  <data>
+    9.58943009e-001 -1.89569555e-002 -2.82971561e-001 1.98820289e-002
+    9.99804854e-001 3.96782823e-004 2.82906562e-001 -6.00655656e-003
+    9.59130168e-001</data></R>
+<t type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>1</cols>
+  <dt>f</dt>
+  <data>
+    9.23344612e-001 6.30736113e-001 -6.79675788e-002</data></t>
+</opencv_storage>
