@@ -1,5 +1,6 @@
+These assignments are part of the course "Computer Vision 2 (Advanced Computer Vision)" taught by Prof. Martin Oswald and Prof. Theo Gevers. 
 # Code Files and Report
-Group CV2 project for the course 'Comuter Vision 2' at University of Amsterdam (UvA). 
+Group CV2 project. 
 
 Assignment 1 - Iterative Closest Point (ICP)
 
